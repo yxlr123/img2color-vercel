@@ -8,7 +8,7 @@
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yxlr123/img2color-vercel/)
 ## api
 
-只有一个~ `/api`
+只有一个~ `/api/img2color`
 
 参数：
 
