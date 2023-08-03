@@ -39,13 +39,13 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
     let img: DynamicImage;
     match download_image_and_parse(img_url).await {
         Ok(i) => img = i,
-        Err(_e) => {
+        Err(e) => {
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
                 .body(
                     json!({
-                        "error":"图片不存在"
+                        "error":e.to_string()
                     })
                     .to_string()
                     .into(),
@@ -109,6 +109,7 @@ async fn download_image_and_parse(
 }
 
 async fn get_theme_color(img: DynamicImage) -> String {
+    let img = img.resize(50,img.height()*50/img.width(),image::imageops::FilterType::Lanczos3);
     // Get the image dimensions
     let (width, height) = img.dimensions();
 

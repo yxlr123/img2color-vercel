@@ -1,2 +1,3 @@
 .vercel
 target
+Cargo.lock
