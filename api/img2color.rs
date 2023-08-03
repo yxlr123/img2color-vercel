@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::io;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use hyper::{Body as hBody, Client, Request as hRequest, Uri};
 use hyper_tls::HttpsConnector;
-use image::{io::Reader as ImageReader, DynamicImage, GenericImageView};
+use image::{io::Reader as ImageReader, DynamicImage, GenericImageView,imageops::FilterType};
 use palette::LinSrgb;
+use num_cpus;
 use serde_json::json;
 use url::Url;
 use vercel_runtime::{run, Body, Error, Request, Response, StatusCode};
@@ -57,7 +60,7 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
         .header("Content-Type", "application/json")
         .body(
             json!({
-              "RGB": get_theme_color(img).await
+              "RGB": get_theme_color(&img).await
             })
             .to_string()
             .into(),
@@ -108,29 +111,59 @@ async fn download_image_and_parse(
     Ok(img)
 }
 
-async fn get_theme_color(img: DynamicImage) -> String {
-    let img = img.resize(50,img.height()*50/img.width(),image::imageops::FilterType::Lanczos3);
+async fn get_theme_color(img: &DynamicImage) -> String {
+    // Resize the image to 50 pixels width
+    let img = img.resize(50, (img.height() * 50) / img.width(), FilterType::Lanczos3);
+
     // Get the image dimensions
     let (width, height) = img.dimensions();
 
-    // Calculate the average color of the image
-    let mut sum_red: u32 = 0;
-    let mut sum_green: u32 = 0;
-    let mut sum_blue: u32 = 0;
+    // Calculate the sum of RGB values of each pixel in parallel
+    let sum_rgb = Arc::new(Mutex::new((0u32, 0u32, 0u32)));
+    let pixels_per_thread = (width * height) / num_cpus::get() as u32;
+    let mut handles = Vec::new();
 
-    for x in 0..width {
-        for y in 0..height {
-            let pixel = img.get_pixel(x, y);
-            sum_red += pixel[0] as u32;
-            sum_green += pixel[1] as u32;
-            sum_blue += pixel[2] as u32;
-        }
+    for tid in 0..num_cpus::get() {
+        let sum_rgb = Arc::clone(&sum_rgb);
+        let img = img.clone();
+        let start = tid * pixels_per_thread as usize;
+        let end = if tid == num_cpus::get() - 1 {
+            width * height
+        } else {
+            (tid + 1) as u32 * pixels_per_thread
+        };
+        let handle = thread::spawn(move || {
+            let mut sum_red = 0u32;
+            let mut sum_green = 0u32;
+            let mut sum_blue = 0u32;
+
+            for p in start..end as usize {
+                let x = p % width as usize;
+                let y = p / width as usize;
+                let pixel = img.get_pixel(x as u32, y as u32);
+                sum_red += pixel[0] as u32;
+                sum_green += pixel[1] as u32;
+                sum_blue += pixel[2] as u32;
+            }
+
+            let mut sum_rgb = sum_rgb.lock().unwrap();
+            sum_rgb.0 += sum_red;
+            sum_rgb.1 += sum_green;
+            sum_rgb.2 += sum_blue;
+        });
+        handles.push(handle);
     }
 
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // Calculate the average RGB value
     let pixel_count = (width * height) as f32;
-    let avg_red = (sum_red as f32 / pixel_count).round() as u8;
-    let avg_green = (sum_green as f32 / pixel_count).round() as u8;
-    let avg_blue = (sum_blue as f32 / pixel_count).round() as u8;
+    let sum_rgb = sum_rgb.lock().unwrap();
+    let avg_red = (sum_rgb.0 as f32 / pixel_count).round() as u8;
+    let avg_green = (sum_rgb.1 as f32 / pixel_count).round() as u8;
+    let avg_blue = (sum_rgb.2 as f32 / pixel_count).round() as u8;
 
     // Create a palette color from the average color
     let avg_color = LinSrgb::new(
