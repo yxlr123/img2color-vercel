@@ -56,9 +56,9 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
         }
     };
     let img: DynamicImage;
-    let img_hex: String;
+    let img_hex: String = format!("{:?}",md5::compute(&img_url));
     match download_image_and_parse(img_url).await {
-        Ok(i) => (img,img_hex) = i,
+        Ok(i) => img = i,
         Err(e) => {
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -110,14 +110,13 @@ async fn fix_url(url: &str) -> String {
 
 async fn download_image_and_parse(
     url: &str,
-) -> Result<(DynamicImage,String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<DynamicImage, Box<dyn std::error::Error + Send + Sync>> {
     let url = fix_url(url).await;
     let resp = reqwest::get(&url).await?;
     let bytes = resp.bytes().await?;
-    let img_hex = md5::compute(&url);
     let img = image::load_from_memory(&bytes)?;
     let img= img.resize(50, (img.height()*50)/img.width(), FilterType::Lanczos3);
-    Ok((img,format!("{:?}",img_hex)))
+    Ok(img)
 }
 
 async fn get_theme_color(img: &DynamicImage) -> String {
