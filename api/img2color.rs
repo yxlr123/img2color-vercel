@@ -7,8 +7,7 @@ use image::{self, DynamicImage, GenericImageView,imageops::FilterType};
 use palette::LinSrgb;
 use serde_json::json;
 use vercel_runtime::{run, Body, Error, Request, Response, StatusCode};
-use mongodb::{Client, options::{ClientOptions,ServerApi, ServerApiVersion},bson::doc};
-use serde::{Deserialize,Serialize};
+use redis::{Commands,Client};
 use dotenv::dotenv;
 
 #[tokio::main]
@@ -16,31 +15,25 @@ async fn main() -> Result<(), Error> {
     run(handler).await
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 struct Img {
     hex:String,
     color:String
 }
 
 pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
+    // 连接数据库
     dotenv().ok();
-    let username = env::var("USERNAME").unwrap(); 
-    let password = env::var("PASSWORD").unwrap();
-    let host = env::var("MONGO_HOST").unwrap();
-
-    let url = format!(
-        "mongodb+srv://{}:{}@{}/?retryWrites=true&w=majority", 
-        username, password, host
-    );
-
-    // 创建客户端
-    let mut client_options = ClientOptions::parse(&url).await?;
-    let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
-    client_options.server_api = Some(server_api);
-    let db_client = Client::with_options(client_options)?;
-    let db = db_client.database("admin");
-    let collection = db.collection::<Img>("colors");
-
+    let redis_host = env::var("REDIS_HOST")?;
+    let redis_port = env::var("REDIS_PORT")?;
+    let username = env::var("USERNAME")?;
+    let password = env::var("PASSWORD")?;
+    
+    let redis_url = format!("redis://{}:{}@{}:{}/",username,password,redis_host,redis_port);
+    let db_client = Client::open(redis_url)?;
+    let mut con = db_client.get_connection()?;
+    
+   // 解析请求
     let parsed_url = Url::parse(&req.uri().to_string()).unwrap();
     let hash_query: HashMap<String, String> = parsed_url.query_pairs().into_owned().collect();
     let img = hash_query.get("img");
@@ -79,14 +72,14 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
                 )?)
         }
     }
-    let cursor = collection.find(doc! {"hex":&img_hex}, None).await?;
-    if let Ok(i) = cursor.deserialize_current() {
+    let color:Option<String> = con.get(&img_hex)?;
+    if let Some(i) = color {
         return Ok(Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(
                 json!({
-                    "RGB": &i.color
+                    "RGB": &i
                 })
                 .to_string()
                 .into(),
@@ -94,7 +87,7 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
         );
     }
     let img = Img {hex: img_hex,color: get_theme_color(&img).await};
-    collection.insert_one(&img,None).await?;
+    con.set(&img.hex,&img.color)?;
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
