@@ -114,7 +114,7 @@ async fn download_image_and_parse(
     let url = fix_url(url).await;
     let resp = reqwest::get(url).await?;
     let bytes = resp.bytes().await?;
-    let img_hex = md5::compute(&bytes);
+    let img_hex = md5::compute(&url);
     let img = image::load_from_memory(&bytes)?;
     let img= img.resize(50, (img.height()*50)/img.width(), FilterType::Lanczos3);
     Ok((img,format!("{:?}",img_hex)))
