@@ -8,12 +8,14 @@ tokio = { version = "1", features = ["full"] }
 serde_json = { version = "1", features = ["raw_value"] }
 # Documentation: https://docs.rs/vercel_runtime/latest/vercel_runtime
 vercel_runtime = { version = "1.0.2" }
-hyper = { version = "0.14", features = ["full"] }
-hyper-tls = "0.5.0"
 image = "0.24.6"
 palette = "0.7.2"
-url = "2.4.0"
-num_cpus = "1.16.0"
+reqwest = "0.11.18"
+mongodb = "2.6.1"
+md5 = "0.7.0"
+bson = "2.6.1"
+serde = { version = "1.0.183", features = ["derive"] }
+dotenv = "0.15.0"
 
 # You can specify a library for shared logic here (optional)
 # [lib]
