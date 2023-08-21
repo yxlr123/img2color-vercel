@@ -55,8 +55,26 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
                 )?);
         }
     };
-    let img: DynamicImage;
+
+    // 查询缓存
     let img_hex: String = format!("{:?}",md5::compute(&img_url));
+    let color:Option<String> = con.get(&img_hex)?;
+    if let Some(i) = color {
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(
+                json!({
+                    "RGB": &i
+                })
+                .to_string()
+                .into(),
+            )?
+        );
+    }
+
+    // 下载解析图片
+    let img:DynamicImage;
     match download_image_and_parse(img_url).await {
         Ok(i) => img = i,
         Err(e) => {
@@ -72,20 +90,7 @@ pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
                 )?)
         }
     }
-    let color:Option<String> = con.get(&img_hex)?;
-    if let Some(i) = color {
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(
-                json!({
-                    "RGB": &i
-                })
-                .to_string()
-                .into(),
-            )?
-        );
-    }
+    // 提取主题色 缓存并返回结果
     let img = Img {hex: img_hex,color: get_theme_color(&img).await};
     con.set(&img.hex,&img.color)?;
     Ok(Response::builder()
