@@ -112,7 +112,7 @@ async fn download_image_and_parse(
     url: &str,
 ) -> Result<(DynamicImage,String), Box<dyn std::error::Error + Send + Sync>> {
     let url = fix_url(url).await;
-    let resp = reqwest::get(url).await?;
+    let resp = reqwest::get(&url).await?;
     let bytes = resp.bytes().await?;
     let img_hex = md5::compute(&url);
     let img = image::load_from_memory(&bytes)?;
